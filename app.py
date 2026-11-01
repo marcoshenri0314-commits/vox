@@ -89,6 +89,8 @@ PAGE = r"""
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#7B2CBF">
+<link rel="manifest" href="/manifest.json">
 <title>Vox — Rede social de áudios</title>
 <style>
 :root{--bg:#100b1d;--panel:#1d1430;--panel2:#281b40;--purple:#a879ff;--pink:#e18cff;--text:#f7f1ff;--muted:#b9a9ce;--line:#3a2a52}
@@ -200,6 +202,12 @@ stopBtn.addEventListener('click', () => {
   if (recorder && recorder.state !== 'inactive') recorder.stop();
   recordBtn.disabled = false; stopBtn.disabled = true;
 });
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/service-worker.js")
+      .catch(error => console.error("Erro no Service Worker:", error));
+  });
+}
 </script>
 </body></html>
 """
@@ -243,6 +251,16 @@ a{color:#d5baff}button{padding:10px 14px;border:0;border-radius:9px;background:#
 </main></body></html>
 """
 
+@app.get("/manifest.json")
+def manifest():
+    return send_from_directory(BASE_DIR, "manifest.json", mimetype="application/manifest+json")
+
+@app.get("/service-worker.js")
+def service_worker():
+    response = send_from_directory(BASE_DIR, "service-worker.js", mimetype="application/javascript")
+    response.headers["Service-Worker-Allowed"] = "/"
+    response.headers["Cache-Control"] = "no-cache"
+    return response
 @app.get("/")
 def home():
     with db() as connection:
