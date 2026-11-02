@@ -107,7 +107,16 @@ def profile_page(username):
     for p in posts: p['url']=media(p.get('media_path'))
     followers=len(sb.table('follows').select('id').eq('following_id',person['id']).execute().data or []); following=len(sb.table('follows').select('id').eq('follower_id',person['id']).execute().data or [])
     me=user(); followed=bool(me and sb.table('follows').select('id').eq('follower_id',me['id']).eq('following_id',person['id']).execute().data)
-    return page('Perfil','''<div class="card"><h2>{{ person.display_name or person.username }}</h2><b>@{{ person.username }}</b><p>{{ person.bio or '' }}</p><p>{{ followers }} seguidores · {{ following }} seguindo · {{ posts|length }} publicações</p>{% if current and current.id!=person.id %}<form method="post" action="{{ url_for('follow',uid=person.id) }}"><button>{{ 'Deixar de seguir' if followed else 'Seguir' }}</button></form>{% endif %}{% if current and current.id==person.id %}<a class="btn" href="{{ url_for('edit_profile') }}">Editar perfil</a>{% endif %}</div>{% for p in posts %}<div class="card"><p>{{ p.caption or '' }}</p>{% if p.kind=='audio' %}<audio controls src="{{ p.url }}"></audio>{% else %}<img class="photo" src="{{ p.url }}">{% endif %}<a href="{{ url_for('post',post_id=p.id) }}">Abrir publicação</a></div>{% endfor %}''',person=person,posts=posts,followers=followers,following=following,followed=followed)
+    return page('Perfil','''<div class="card"><h2>{{ person.display_name or person.username }}</h2><b>@{{ person.username }}</b><p>{{ person.bio or '' }}</p><p>
+    <a href="{{ url_for('followers_page', username=person.username) }}">
+        {{ followers }} seguidores
+    </a>
+    ·
+    <a href="{{ url_for('following_page', username=person.username) }}">
+        {{ following }} seguindo
+    </a>
+    · {{ posts|length }} publicações
+</p>{% if current and current.id!=person.id %}<form method="post" action="{{ url_for('follow',uid=person.id) }}"><button>{{ 'Deixar de seguir' if followed else 'Seguir' }}</button></form>{% endif %}{% if current and current.id==person.id %}<a class="btn" href="{{ url_for('edit_profile') }}">Editar perfil</a>{% endif %}</div>{% for p in posts %}<div class="card"><p>{{ p.caption or '' }}</p>{% if p.kind=='audio' %}<audio controls src="{{ p.url }}"></audio>{% else %}<img class="photo" src="{{ p.url }}">{% endif %}<a href="{{ url_for('post',post_id=p.id) }}">Abrir publicação</a></div>{% endfor %}''',person=person,posts=posts,followers=followers,following=following,followed=followed)
 @app.route('/perfil/editar',methods=['GET','POST'])
 @login_required
 def edit_profile():
@@ -128,6 +137,98 @@ def follow(uid):
     if q: sb.table('follows').delete().eq('follower_id',me['id']).eq('following_id',uid).execute()
     else: sb.table('follows').insert({'follower_id':me['id'],'following_id':uid}).execute()
     return redirect(request.referrer or url_for('feed'))
+    # Listas de seguidores e pessoas seguindo
+
+@app.route('/u/<username>/seguidores')
+def followers_page(username):
+    person = sb.table('profiles').select('*').ilike(
+        'username', username
+    ).maybe_single().execute().data
+
+    if not person:
+        abort(404)
+
+    relations = sb.table('follows').select(
+        'follower_id'
+    ).eq('following_id', person['id']).execute().data or []
+
+    people = []
+
+    for relation in relations:
+        p = profile(relation['follower_id'])
+        if p:
+            people.append(p)
+
+    return page(
+        'Seguidores',
+        '''
+        <div class="card">
+            <h2>Seguidores de @{{ person.username }}</h2>
+
+            {% for p in people %}
+                <div class="notice">
+                    <a href="{{ url_for(
+                        'profile_page',
+                        username=p.username
+                    ) }}">
+                        {{ p.display_name or p.username }}
+                        · @{{ p.username }}
+                    </a>
+                </div>
+            {% else %}
+                <p class="muted">Nenhum seguidor ainda.</p>
+            {% endfor %}
+        </div>
+        ''',
+        person=person,
+        people=people
+    )
+
+
+@app.route('/u/<username>/seguindo')
+def following_page(username):
+    person = sb.table('profiles').select('*').ilike(
+        'username', username
+    ).maybe_single().execute().data
+
+    if not person:
+        abort(404)
+
+    relations = sb.table('follows').select(
+        'following_id'
+    ).eq('follower_id', person['id']).execute().data or []
+
+    people = []
+
+    for relation in relations:
+        p = profile(relation['following_id'])
+        if p:
+            people.append(p)
+
+    return page(
+        'Seguindo',
+        '''
+        <div class="card">
+            <h2>Pessoas que @{{ person.username }} segue</h2>
+
+            {% for p in people %}
+                <div class="notice">
+                    <a href="{{ url_for(
+                        'profile_page',
+                        username=p.username
+                    ) }}">
+                        {{ p.display_name or p.username }}
+                        · @{{ p.username }}
+                    </a>
+                </div>
+            {% else %}
+                <p class="muted">Ainda não segue ninguém.</p>
+            {% endfor %}
+        </div>
+        ''',
+        person=person,
+        people=people
+    )
 
 # Publish audio/photo
 @app.route('/publicar',methods=['GET','POST'])
